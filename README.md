@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <title>المشروع المساحي الذكي</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+g0IVHkNbdj5N3w8u3Fjae0S4p6lce1x9e+WkCDjo=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-qbWJs1hCuq3P3Fmj6UVX8gErh6k2hfs7iQbFmXrS1KQ=" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <style>
 body { font-family: Arial, sans-serif; background:#f2f3f5; margin:0; padding:0;}
@@ -63,15 +63,15 @@ function generateProject(){
     // إنشاء الخريطة إذا لم تنشأ
     if(!map){
         map = L.map('map').setView([lat, lng], 16);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+            attribution:'© OpenStreetMap'
         }).addTo(map);
     } else {
         map.setView([lat,lng],16);
     }
 
     // رسم Polygon افتراضي (مربع تقريبي)
-    const side = Math.sqrt(area)/111000; // تقريبي 1° ~ 111 km
+    const side = Math.sqrt(area)/111000; // تقريب 1° ~ 111 km
     const bounds=[
         [lat-side/2,lng-side/2],
         [lat-side/2,lng+side/2],

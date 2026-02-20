@@ -2,11 +2,11 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>المشروع المساحي الذكي - احترافي</title>
+<title>المشروع المساحي الذكي - 3D & Map</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f2f3f5; margin:0; padding:0;}
 header { background:#1f3a93; color:white; padding:20px; font-size:28px; text-align:center;}
-section { padding:30px; max-width:900px; margin:auto; }
+section { padding:30px; max-width:1000px; margin:auto; }
 label { display:block; margin-top:15px; font-weight:bold; }
 input, button { padding:10px; margin:10px 0; font-size:16px; width:100%; box-sizing:border-box; }
 button { background:#1f3a93; color:white; border:none; cursor:pointer; transition:0.3s; }
@@ -19,9 +19,9 @@ button:hover { background:#163570; }
 </style>
 </head>
 <body>
-<header>المشروع المساحي الذكي - احترافي</header>
+<header>المشروع المساحي الذكي - 3D & Map</header>
 <section>
-<label>اكتب إحداثيات الموقع (Latitude, Longitude):</label>
+<label>إحداثيات الموقع (Latitude, Longitude):</label>
 <input type="text" id="lat" placeholder="مثال: 26.1648">
 <input type="text" id="lng" placeholder="مثال: 32.7168">
 <label>المساحة بالمتر²:</label>
@@ -39,12 +39,12 @@ button:hover { background:#163570; }
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <script>
-let map, marker;
+let map, marker, polygon;
 
 function initMap(lat=26.1648, lng=32.7168) {
     const center = { lat: parseFloat(lat), lng: parseFloat(lng) };
     map = new google.maps.Map(document.getElementById("map"), {
-        zoom: 18,
+        zoom: 19,
         center: center,
         mapTypeId: 'satellite'
     });
@@ -54,37 +54,54 @@ function initMap(lat=26.1648, lng=32.7168) {
 initMap();
 
 function generateProject() {
-    const lat = document.getElementById('lat').value;
-    const lng = document.getElementById('lng').value;
+    const lat = parseFloat(document.getElementById('lat').value);
+    const lng = parseFloat(document.getElementById('lng').value);
     const area = parseFloat(document.getElementById('area').value);
 
     if(!lat || !lng || !area) { alert("من فضلك املأ جميع البيانات"); return; }
 
-    // تحديث الخريطة والموقع
-    const position = {lat: parseFloat(lat), lng: parseFloat(lng)};
+    const position = {lat: lat, lng: lng};
     map.setCenter(position);
     marker.setPosition(position);
+
+    // رسم كروكي المساحة كمضلع تقريبي مربع
+    if(polygon) polygon.setMap(null);
+    const side = Math.sqrt(area) / 111000; // تقريب طول الجانب بدرجة (1° ≈ 111km)
+    const bounds = [
+        {lat: lat - side/2, lng: lng - side/2},
+        {lat: lat - side/2, lng: lng + side/2},
+        {lat: lat + side/2, lng: lng + side/2},
+        {lat: lat + side/2, lng: lng - side/2}
+    ];
+    polygon = new google.maps.Polygon({
+        paths: bounds,
+        strokeColor: "#FF0000",
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: "#FF0000",
+        fillOpacity: 0.35
+    });
+    polygon.setMap(map);
 
     // حساب Cut & Fill تقديري
     const cutfill = Math.round(area * 0.2);
 
-    // عرض النتائج
     document.getElementById('output').innerHTML = `
         النتائج:
         <br>المساحة: ${area} م²
         <br>تقدير الحفر والردم: ${cutfill} م³
-        <br>تم تحديد الموقع بدقة على الخريطة.
+        <br>تم تحديد الموقع ورسم الكروكي على الخريطة.
     `;
 
     // تمكين رابط التنزيل
     generateExcel(area, cutfill);
     document.getElementById('downloadLink').style.display = 'block';
 
-    // رسم 3D طبيعي
+    // رسم 3D واقعي
     render3D(area);
 }
 
-// توليد ملف Excel ديناميكي للتحميل
+// توليد ملف Excel ديناميكي
 function generateExcel(area, cutfill) {
     const wb = XLSX.utils.book_new();
     const ws_data = [
@@ -109,6 +126,7 @@ function render3D(area) {
     const container = document.getElementById('render3D');
     container.innerHTML = "";
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xa0d0ff);
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth/container.clientHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({antialias:true});
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -116,24 +134,26 @@ function render3D(area) {
 
     // أرضية طبيعية
     const geometry = new THREE.PlaneGeometry(Math.sqrt(area), Math.sqrt(area));
-    const material = new THREE.MeshPhongMaterial({color:0x7cfc00, side:THREE.DoubleSide});
+    const material = new THREE.MeshPhongMaterial({color:0x228B22, side:THREE.DoubleSide});
     const plane = new THREE.Mesh(geometry, material);
     plane.rotation.x = Math.PI/2;
     scene.add(plane);
 
-    // ملعب أو مبنى
+    // ملعب / مبنى طبيعي
     const fieldGeom = new THREE.BoxGeometry(Math.sqrt(area)*0.8, 2, Math.sqrt(area)*0.5);
-    const fieldMat = new THREE.MeshPhongMaterial({color:0x228B22});
+    const fieldMat = new THREE.MeshPhongMaterial({color:0x556B2F});
     const field = new THREE.Mesh(fieldGeom, fieldMat);
     field.position.y = 1;
     scene.add(field);
 
-    // إضاءة
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(10,20,10);
-    scene.add(light);
+    // إضاءة طبيعية
+    const ambientLight = new THREE.AmbientLight(0xffffff,0.6);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff,1);
+    dirLight.position.set(20,50,20);
+    scene.add(dirLight);
 
-    camera.position.set(0,50,50);
+    camera.position.set(Math.sqrt(area)/2,50,Math.sqrt(area));
     camera.lookAt(0,0,0);
 
     const animate = function() {

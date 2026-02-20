@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>المشروع المساحي الذكي - نسخة مطورة</title>
+<title>المشروع المساحي الذكي - خرائط دقيقة</title>
 <style>
 body { font-family: Arial, sans-serif; text-align:center; background:#e8f5e9; margin:0; padding:0; }
 h1 { margin-top:20px; color:#1b5e20; }
@@ -13,7 +13,7 @@ input, button { margin:10px; padding:10px; font-size:16px; border-radius:5px; bo
 </head>
 <body>
 
-<h1>المشروع المساحي الذكي - نسخة مطورة</h1>
+<h1>المشروع المساحي الذكي - خرائط دقيقة</h1>
 
 <label>خط العرض: </label><input type="number" id="lat" step="0.0001" placeholder="مثال: 26.1648"><br>
 <label>خط الطول: </label><input type="number" id="lng" step="0.0001" placeholder="مثال: 32.7168"><br>
@@ -29,7 +29,11 @@ input, button { margin:10px; padding:10px; font-size:16px; border-radius:5px; bo
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
 <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"></script>
+
 <script>
+let map, polygon;
+
 function generateProject() {
     const lat = parseFloat(document.getElementById('lat').value);
     const lng = parseFloat(document.getElementById('lng').value);
@@ -37,31 +41,25 @@ function generateProject() {
     const width = parseFloat(document.getElementById('width').value);
     if(!lat || !lng || !length || !width){ alert("ادخل كل البيانات"); return; }
 
-    // توليد شبكة نقاط الأرض
+    // إنشاء شبكة نقاط الأرض
     const rows = Math.ceil(length / 5);
     const cols = Math.ceil(width / 5);
     const points = [];
     for(let i=0;i<=rows;i++){
         for(let j=0;j<=cols;j++){
-            // ارتفاع طبيعي للأرض + تدرج عشوائي صغير
-            points.push({
-                x: j*5,
-                y: i*5,
-                elevation: 100 + Math.random()*2
-            });
+            points.push({ x: j*5, y: i*5, elevation: 100 + Math.random()*2 });
         }
     }
 
-    // اضافة ملعب او مبنى وسط الأرض
+    // اضافة ملعب/مبنى
     const centerRow = Math.floor(rows/2);
     const centerCol = Math.floor(cols/2);
     const buildingRows = Math.min(10, rows);
     const buildingCols = Math.min(20, cols);
-
     for(let i=centerRow-Math.floor(buildingRows/2); i<=centerRow+Math.floor(buildingRows/2); i++){
         for(let j=centerCol-Math.floor(buildingCols/2); j<=centerCol+Math.floor(buildingCols/2); j++){
             const idx = i*(cols+1)+j;
-            if(points[idx]) points[idx].elevation += 2; // ارتفاع المبنى/الملعب
+            if(points[idx]) points[idx].elevation += 2;
         }
     }
 
@@ -69,7 +67,7 @@ function generateProject() {
     points.forEach(p => { p.cutfill = Math.round(p.elevation - 100); });
 
     generateExcel(points);
-    drawMap(lat, lng, points);
+    drawMap(lat, lng, length, width);
     draw3DTerrain(points, rows, cols);
     alert("تم إنشاء المشروع المطور بنجاح!");
 }
@@ -82,26 +80,56 @@ function generateExcel(points){
     document.getElementById('downloadLink').style.display = 'block';
 }
 
-function drawMap(lat, lng, points){
-    document.getElementById('map').innerHTML = "";
+function drawMap(lat, lng, length, width){
     const mapDiv = document.getElementById('map');
-    const iframe = document.createElement('iframe');
-    iframe.width="100%"; iframe.height="100%";
-    iframe.src = `https://maps.google.com/maps?q=${lat},${lng}&hl=ar&z=17&output=embed`;
-    mapDiv.appendChild(iframe);
+    mapDiv.innerHTML = "";
+    map = new google.maps.Map(mapDiv, {
+        center: {lat: lat, lng: lng},
+        zoom: 18,
+        mapTypeId: 'satellite'
+    });
+
+    // تحويل الأبعاد بالمتر إلى درجات تقريبا (تقريب بسيط)
+    const latOffset = (length/111000); // طول 1 درجة ~ 111 كم
+    const lngOffset = (width/(111000*Math.cos(lat*Math.PI/180)));
+
+    const polygonCoords = [
+        {lat: lat, lng: lng},
+        {lat: lat + latOffset, lng: lng},
+        {lat: lat + latOffset, lng: lng + lngOffset},
+        {lat: lat, lng: lng + lngOffset}
+    ];
+
+    // رسم المضلع
+    if(polygon) polygon.setMap(null);
+    polygon = new google.maps.Polygon({
+        paths: polygonCoords,
+        strokeColor: '#FF0000',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: '#FF0000',
+        fillOpacity: 0.35
+    });
+    polygon.setMap(map);
+
+    // مركز الكروكي
+    map.fitBounds(new google.maps.LatLngBounds(
+        new google.maps.LatLng(lat, lng),
+        new google.maps.LatLng(lat + latOffset, lng + lngOffset)
+    ));
 }
 
 function draw3DTerrain(points, rows, cols){
-    document.getElementById('terrain3D').innerHTML = "";
+    const div = document.getElementById('terrain3D');
+    div.innerHTML = "";
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, 0.9*window.innerWidth/400, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(75, div.clientWidth/400, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(document.getElementById('terrain3D').clientWidth, 400);
-    document.getElementById('terrain3D').appendChild(renderer.domElement);
+    renderer.setSize(div.clientWidth, 400);
+    div.appendChild(renderer.domElement);
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
 
-    // رسم شبكة الارض
     const geometry = new THREE.PlaneGeometry(cols*5, rows*5, cols, rows);
     geometry.vertices.forEach((v, idx)=>{ 
         if(points[idx]) v.z = points[idx].elevation/2; 
@@ -111,12 +139,10 @@ function draw3DTerrain(points, rows, cols){
     plane.rotation.x = -Math.PI/2;
     scene.add(plane);
 
-    // ضوء طبيعي
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(50,50,50);
     scene.add(light);
-    const ambient = new THREE.AmbientLight(0x404040);
-    scene.add(ambient);
+    scene.add(new THREE.AmbientLight(0x404040));
 
     camera.position.set(cols*5, rows*5, 50);
     controls.update();

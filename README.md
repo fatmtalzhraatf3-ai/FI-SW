@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>المشروع المساحي - شبكة وكروكي</title>
+<title>المشروع المساحي - Google Earth</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f2f3f5; margin:0; padding:0;}
 header { background:#1f3a93; color:white; padding:20px; font-size:28px; text-align:center;}
@@ -18,7 +18,7 @@ button:hover { background:#163570; }
 </style>
 </head>
 <body>
-<header>المشروع المساحي - شبكة وكروكي</header>
+<header>المشروع المساحي - شبكة وكروكي Google Earth</header>
 <section>
 <label>إحداثيات الموقع (Latitude, Longitude):</label>
 <input type="text" id="lat" placeholder="مثال: 26.1648">
@@ -31,27 +31,31 @@ button:hover { background:#163570; }
 
 <div id="map"></div>
 <div id="output"></div>
-<a id="downloadLink" href="#" download="project_grid.xlsx">تنزيل النتائج</a>
+<a id="downloadLink" href="#" download="project_grid.xlsx">تنزيل ملف الشبكة Excel</a>
 </section>
 
-<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/earth/client/api.js"></script>
 <script>
-let map, marker, polygon, gridLines = [];
+let ge, placemarkPolygon, gridPolygons = [];
 
-function initMap(lat=26.1648, lng=32.7168){
-    const center = {lat: lat, lng: lng};
-    map = new google.maps.Map(document.getElementById("map"), {
-        zoom: 19,
-        center: center,
-        mapTypeId: 'satellite'
-    });
-    marker = new google.maps.Marker({position: center, map: map, title:"الموقع المحدد"});
+function initEarth() {
+    google.earth.createInstance('map', initCB, failureCB);
 }
 
-initMap();
+function initCB(instance) {
+    ge = instance;
+    ge.getWindow().setVisibility(true);
+    ge.getNavigationControl().setVisibility(ge.VISIBILITY_AUTO);
+    ge.getLayerRoot().enableLayerById(ge.LAYER_BORDERS, true);
+    ge.getLayerRoot().enableLayerById(ge.LAYER_TERRAIN, true);
+}
 
-function generateProject(){
+function failureCB(errorCode) { alert("خطأ في تحميل Google Earth"); }
+
+initEarth();
+
+function generateProject() {
     const lat = parseFloat(document.getElementById('lat').value);
     const lng = parseFloat(document.getElementById('lng').value);
     const area = parseFloat(document.getElementById('area').value);
@@ -59,17 +63,13 @@ function generateProject(){
 
     if(!lat || !lng || !area || !gridCount){ alert("من فضلك املأ جميع البيانات"); return; }
 
-    const position = {lat: lat, lng: lng};
-    map.setCenter(position);
-    marker.setPosition(position);
-
     // إزالة أي رسومات قديمة
-    if(polygon) polygon.setMap(null);
-    gridLines.forEach(line => line.setMap(null));
-    gridLines = [];
+    if(placemarkPolygon) ge.getFeatures().removeChild(placemarkPolygon);
+    gridPolygons.forEach(p => ge.getFeatures().removeChild(p));
+    gridPolygons = [];
 
     // رسم Polygon تقريبي للمساحة كمربع
-    const side = Math.sqrt(area)/111000; // 1° ~ 111 km تقريبا
+    const side = Math.sqrt(area)/111000; // 1° ~ 111 km
     const bounds = [
         {lat: lat - side/2, lng: lng - side/2},
         {lat: lat - side/2, lng: lng + side/2},
@@ -77,55 +77,51 @@ function generateProject(){
         {lat: lat + side/2, lng: lng - side/2}
     ];
 
-    polygon = new google.maps.Polygon({
-        paths: bounds,
-        strokeColor: '#FF0000',
-        strokeOpacity: 0.8,
-        strokeWeight: 2,
-        fillColor: '#FF0000',
-        fillOpacity: 0.2
-    });
-    polygon.setMap(map);
+    placemarkPolygon = ge.createPlacemark('');
+    const poly = ge.createPolygon('');
+    const outer = ge.createLinearRing('');
+    bounds.forEach(pt => outer.getCoordinates().pushLatLngAlt(pt.lat, pt.lng, 0));
+    outer.getCoordinates().pushLatLngAlt(bounds[0].lat, bounds[0].lng, 0);
+    poly.setOuterBoundary(outer);
+    poly.setAltitudeMode(ge.ALTITUDE_CLAMP_TO_GROUND);
+    placemarkPolygon.setGeometry(poly);
+    ge.getFeatures().appendChild(placemarkPolygon);
 
-    // إنشاء الشبكة داخل المضلع
+    // إنشاء الشبكة
     const latStep = (bounds[2].lat - bounds[0].lat)/gridCount;
     const lngStep = (bounds[2].lng - bounds[0].lng)/gridCount;
     let gridData = [];
 
     for(let i=0;i<gridCount;i++){
         for(let j=0;j<gridCount;j++){
-            const lineBounds = [
+            const gBounds = [
                 {lat: bounds[0].lat + i*latStep, lng: bounds[0].lng + j*lngStep},
                 {lat: bounds[0].lat + (i+1)*latStep, lng: bounds[0].lng + j*lngStep},
                 {lat: bounds[0].lat + (i+1)*latStep, lng: bounds[0].lng + (j+1)*lngStep},
                 {lat: bounds[0].lat + i*latStep, lng: bounds[0].lng + (j+1)*lngStep}
             ];
 
-            const gridPolygon = new google.maps.Polygon({
-                paths: lineBounds,
-                strokeColor:'#0000FF',
-                strokeOpacity:0.6,
-                strokeWeight:1,
-                fillColor:'#00FF00',
-                fillOpacity:0.1
-            });
-            gridPolygon.setMap(map);
-            gridLines.push(gridPolygon);
+            const gp = ge.createPlacemark('');
+            const gPoly = ge.createPolygon('');
+            const gRing = ge.createLinearRing('');
+            gBounds.forEach(pt => gRing.getCoordinates().pushLatLngAlt(pt.lat, pt.lng, 0));
+            gRing.getCoordinates().pushLatLngAlt(gBounds[0].lat, gBounds[0].lng, 0);
+            gPoly.setOuterBoundary(gRing);
+            gPoly.setAltitudeMode(ge.ALTITUDE_CLAMP_TO_GROUND);
+            gp.setGeometry(gPoly);
+            ge.getFeatures().appendChild(gp);
+            gridPolygons.push(gp);
 
             gridData.push({
-                corner1_lat: lineBounds[0].lat,
-                corner1_lng: lineBounds[0].lng,
-                corner2_lat: lineBounds[1].lat,
-                corner2_lng: lineBounds[1].lng,
-                corner3_lat: lineBounds[2].lat,
-                corner3_lng: lineBounds[2].lng,
-                corner4_lat: lineBounds[3].lat,
-                corner4_lng: lineBounds[3].lng
+                corner1_lat: gBounds[0].lat, corner1_lng: gBounds[0].lng,
+                corner2_lat: gBounds[1].lat, corner2_lng: gBounds[1].lng,
+                corner3_lat: gBounds[2].lat, corner3_lng: gBounds[2].lng,
+                corner4_lat: gBounds[3].lat, corner4_lng: gBounds[3].lng
             });
         }
     }
 
-    // إنشاء ملف Excel للتنزيل
+    // إنشاء Excel
     const ws = XLSX.utils.json_to_sheet(gridData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Grid");

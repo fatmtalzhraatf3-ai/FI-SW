@@ -3,10 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <title>المشروع المساحي الذكي</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <style>
 body { font-family: Arial, sans-serif; background:#f2f3f5; margin:0; padding:0;}
 header { background:#1f3a93; color:white; padding:20px; font-size:28px; text-align:center;}
-section { padding:30px; max-width:1000px; margin:auto; }
+section { padding:20px; max-width:1000px; margin:auto; }
 label { display:block; margin-top:15px; font-weight:bold; }
 input, select, button { padding:10px; margin:10px 0; font-size:16px; width:100%; box-sizing:border-box; }
 button { background:#1f3a93; color:white; border:none; cursor:pointer; transition:0.3s; }
@@ -40,10 +43,8 @@ button:hover { background:#163570; }
 <a id="downloadLink" href="#" download="project_grid.xlsx">تنزيل ملف الشبكة Excel</a>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"></script>
 <script>
-let map, polygon, gridRectangles = [];
+let map, polygonLayer, gridLayers=[];
 
 function generateProject(){
     const lat = parseFloat(document.getElementById('lat').value);
@@ -55,68 +56,51 @@ function generateProject(){
     if(!lat || !lng || !area || !gridCount){ alert("من فضلك املأ جميع البيانات"); return; }
 
     // إزالة أي رسومات قديمة
-    if(polygon) polygon.setMap(null);
-    gridRectangles.forEach(rect=>rect.setMap(null));
-    gridRectangles=[];
+    if(polygonLayer) map.removeLayer(polygonLayer);
+    gridLayers.forEach(l=>map.removeLayer(l));
+    gridLayers=[];
 
     // إنشاء الخريطة إذا لم تنشأ
     if(!map){
-        map = new google.maps.Map(document.getElementById('map'),{
-            center:{lat:lat,lng:lng},
-            zoom:16
-        });
+        map = L.map('map').setView([lat, lng], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
     } else {
-        map.setCenter({lat:lat,lng:lng});
+        map.setView([lat,lng],16);
     }
 
     // رسم Polygon افتراضي (مربع تقريبي)
-    const side = Math.sqrt(area)/111000; // تقريب 1° ~ 111 km
+    const side = Math.sqrt(area)/111000; // تقريبي 1° ~ 111 km
     const bounds=[
-        {lat:lat-side/2,lng:lng-side/2},
-        {lat:lat-side/2,lng:lng+side/2},
-        {lat:lat+side/2,lng:lng+side/2},
-        {lat:lat+side/2,lng:lng-side/2},
+        [lat-side/2,lng-side/2],
+        [lat-side/2,lng+side/2],
+        [lat+side/2,lng+side/2],
+        [lat+side/2,lng-side/2]
     ];
-
-    polygon = new google.maps.Polygon({
-        paths: bounds,
-        strokeColor: "#FF0000",
-        strokeOpacity: 0.8,
-        strokeWeight: 2,
-        fillColor: "#FF0000",
-        fillOpacity: 0.2
-    });
-    polygon.setMap(map);
+    polygonLayer = L.polygon(bounds,{color:'red', fillOpacity:0.2}).addTo(map);
 
     // إنشاء شبكة Grid داخل Polygon
-    const latStep = (bounds[2].lat - bounds[0].lat)/gridCount;
-    const lngStep = (bounds[2].lng - bounds[0].lng)/gridCount;
+    const latStep = (bounds[2][0]-bounds[0][0])/gridCount;
+    const lngStep = (bounds[2][1]-bounds[0][1])/gridCount;
     let gridData = [];
 
     for(let i=0;i<gridCount;i++){
         for(let j=0;j<gridCount;j++){
-            const rectBounds=[
-                {lat:bounds[0].lat+i*latStep,lng:bounds[0].lng+j*lngStep},
-                {lat:bounds[0].lat+(i+1)*latStep,lng:bounds[0].lng+j*lngStep},
-                {lat:bounds[0].lat+(i+1)*latStep,lng:bounds[0].lng+(j+1)*lngStep},
-                {lat:bounds[0].lat+i*latStep,lng:bounds[0].lng+(j+1)*lngStep},
+            const rect=[
+                [bounds[0][0]+i*latStep,bounds[0][1]+j*lngStep],
+                [bounds[0][0]+(i+1)*latStep,bounds[0][1]+j*lngStep],
+                [bounds[0][0]+(i+1)*latStep,bounds[0][1]+(j+1)*lngStep],
+                [bounds[0][0]+i*latStep,bounds[0][1]+(j+1)*lngStep]
             ];
-            const rect = new google.maps.Polygon({
-                paths:rectBounds,
-                strokeColor:"#008000",
-                strokeOpacity:0.6,
-                strokeWeight:1,
-                fillColor:"#008000",
-                fillOpacity:0.1
-            });
-            rect.setMap(map);
-            gridRectangles.push(rect);
+            const rectLayer=L.polygon(rect,{color:'green', fillOpacity:0.1}).addTo(map);
+            gridLayers.push(rectLayer);
 
             gridData.push({
-                corner1_lat: rectBounds[0].lat, corner1_lng: rectBounds[0].lng,
-                corner2_lat: rectBounds[1].lat, corner2_lng: rectBounds[1].lng,
-                corner3_lat: rectBounds[2].lat, corner3_lng: rectBounds[2].lng,
-                corner4_lat: rectBounds[3].lat, corner4_lng: rectBounds[3].lng,
+                corner1_lat: rect[0][0], corner1_lng: rect[0][1],
+                corner2_lat: rect[1][0], corner2_lng: rect[1][1],
+                corner3_lat: rect[2][0], corner3_lng: rect[2][1],
+                corner4_lat: rect[3][0], corner4_lng: rect[3][1],
                 projectType: projectType
             });
         }

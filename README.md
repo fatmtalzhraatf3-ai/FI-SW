@@ -1,119 +1,134 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-<meta charset="UTF-8">
-<title>المشروع المساحي الذكي - نسخة جديدة</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-<style>
-body{font-family:Arial,sans-serif;background:#eef2f5;margin:0;padding:0;}
-header{background:#34495e;color:white;padding:20px;font-size:28px;text-align:center;}
-section{padding:20px;max-width:900px;margin:auto;}
-label{display:block;margin-top:15px;font-weight:bold;}
-input,select,button{padding:10px;margin:10px 0;font-size:16px;width:100%;box-sizing:border-box;}
-button{background:#34495e;color:white;border:none;cursor:pointer;transition:0.3s;}
-button:hover{background:#2c3e50;}
-#map{width:100%;height:500px;border:2px solid #333;margin-top:20px;}
-#output{margin-top:20px;font-size:18px;font-weight:bold;}
-#downloadLink{display:none;margin-top:15px;padding:10px;background:#27ae60;color:white;text-decoration:none;font-weight:bold;}
-#downloadLink:hover{background:#1e8449;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مشروعي على الخريطة</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #111;
+            color: #fff;
+        }
+        header {
+            padding: 15px;
+            text-align: center;
+            background-color: #222;
+        }
+        #controls {
+            padding: 10px;
+            text-align: center;
+            background-color: #222;
+        }
+        input[type=text] {
+            padding: 8px;
+            margin: 5px;
+            width: 120px;
+            border-radius: 4px;
+            border: none;
+        }
+        button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            background-color: #0a84ff;
+            color: #fff;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0066cc;
+        }
+        #map { 
+            height: 80vh; 
+            width: 100%; 
+        }
+    </style>
 </head>
 <body>
-<header>المشروع المساحي الذكي - نسخة جديدة</header>
-<section>
-<label>خط العرض (Latitude)</label>
-<input type="text" id="lat" placeholder="مثال: 26.1648">
-<label>خط الطول (Longitude)</label>
-<input type="text" id="lng" placeholder="مثال: 32.7168">
-<label>المساحة بالمتر²</label>
-<input type="number" id="area" placeholder="مثال: 5000">
-<label>نوع المشروع</label>
-<select id="projectType">
-<option value="ملعب">ملعب</option>
-<option value="مبنى">مبنى</option>
-</select>
-<label>عدد المقاطع بالشبكة</label>
-<input type="number" id="gridCount" placeholder="مثال: 5">
-<button onclick="generateProject()">عرض المشروع</button>
+    <header>
+        <h1>مشروعي الجغرافي</h1>
+    </header>
 
-<div id="map"></div>
-<div id="output"></div>
-<a id="downloadLink" href="#" download="project_grid.xlsx">تنزيل ملف الشبكة Excel</a>
-</section>
+    <div id="controls">
+        <input type="text" id="lat" placeholder="خط العرض">
+        <input type="text" id="lng" placeholder="خط الطول">
+        <button onclick="addMarker()">عرض المكان</button>
+        <button onclick="drawGrid()">عرض الشبكة</button>
+        <button onclick="drawTraverse()">رسم الترافيرس</button>
+        <button onclick="draw2DShape()">رسم شكل 2D</button>
+    </div>
 
-<script>
-let map, polygonLayer, gridLayers=[];
+    <div id="map"></div>
 
-function generateProject(){
-    const lat=parseFloat(document.getElementById('lat').value);
-    const lng=parseFloat(document.getElementById('lng').value);
-    const area=parseFloat(document.getElementById('area').value);
-    const gridCount=parseInt(document.getElementById('gridCount').value);
-    const projectType=document.getElementById('projectType').value;
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // إنشاء الخريطة
+        var map = L.map('map').setView([30.0444, 31.2357], 13); // نقطة مبدئية
 
-    if(!lat || !lng || !area || !gridCount){alert("من فضلك املأ جميع البيانات"); return;}
-
-    if(!map){
-        map=L.map('map').setView([lat,lng],16);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-            attribution:'© OpenStreetMap'
+        // خريطة OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
-    }else{
-        map.setView([lat,lng],16);
-        if(polygonLayer) map.removeLayer(polygonLayer);
-        gridLayers.forEach(l=>map.removeLayer(l));
-        gridLayers=[];
-    }
 
-    // Polygon تقريبي من المساحة
-    const side=Math.sqrt(area)/111000;
-    const bounds=[
-        [lat-side/2,lng-side/2],
-        [lat-side/2,lng+side/2],
-        [lat+side/2,lng+side/2],
-        [lat+side/2,lng-side/2]
-    ];
-    polygonLayer=L.polygon(bounds,{color:'red',fillOpacity:0.2}).addTo(map);
+        var markers = []; // لتخزين الماركرات
+        var traverseLine;
+        var gridLayer;
+        var shapeLayer;
 
-    const latStep=(bounds[2][0]-bounds[0][0])/gridCount;
-    const lngStep=(bounds[2][1]-bounds[0][1])/gridCount;
-    let gridData=[];
-
-    for(let i=0;i<gridCount;i++){
-        for(let j=0;j<gridCount;j++){
-            const rect=[
-                [bounds[0][0]+i*latStep,bounds[0][1]+j*lngStep],
-                [bounds[0][0]+(i+1)*latStep,bounds[0][1]+j*lngStep],
-                [bounds[0][0]+(i+1)*latStep,bounds[0][1]+(j+1)*lngStep],
-                [bounds[0][0]+i*latStep,bounds[0][1]+(j+1)*lngStep]
-            ];
-            const rectLayer=L.polygon(rect,{color:'green',fillOpacity:0.1}).addTo(map);
-            gridLayers.push(rectLayer);
-
-            gridData.push({
-                corner1_lat:rect[0][0],corner1_lng:rect[0][1],
-                corner2_lat:rect[1][0],corner2_lng:rect[1][1],
-                corner3_lat:rect[2][0],corner3_lng:rect[2][1],
-                corner4_lat:rect[3][0],corner4_lng:rect[3][1],
-                projectType:projectType
-            });
+        // إضافة ماركر
+        function addMarker() {
+            var lat = parseFloat(document.getElementById('lat').value);
+            var lng = parseFloat(document.getElementById('lng').value);
+            if(!isNaN(lat) && !isNaN(lng)){
+                var marker = L.marker([lat, lng]).addTo(map).bindPopup("المكان المطلوب").openPopup();
+                markers.push([lat,lng]);
+                map.setView([lat, lng], 16);
+            } else {
+                alert("ادخلي إحداثيات صحيحة");
+            }
         }
-    }
 
-    document.getElementById('output').innerText=`تم إنشاء المشروع: ${projectType} وعدد المربعات: ${gridCount*gridCount}`;
+        // رسم شبكة (Grid)
+        function drawGrid(){
+            if(gridLayer) map.removeLayer(gridLayer);
+            gridLayer = L.layerGroup();
+            var bounds = map.getBounds();
+            var step = 0.0015; // حجم الشبكة
+            for(var lat=bounds.getSouth(); lat<bounds.getNorth(); lat+=step){
+                L.polyline([[lat, bounds.getWest()], [lat, bounds.getEast()]], {color:'#555', weight:1}).addTo(gridLayer);
+            }
+            for(var lng=bounds.getWest(); lng<bounds.getEast(); lng+=step){
+                L.polyline([[bounds.getSouth(), lng], [bounds.getNorth(), lng]], {color:'#555', weight:1}).addTo(gridLayer);
+            }
+            gridLayer.addTo(map);
+        }
 
-    // تحضير زر تنزيل Excel
-    const ws=XLSX.utils.json_to_sheet(gridData);
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,"Grid");
-    const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-    const blob=new Blob([wbout],{type:"application/octet-stream"});
-    const link=document.getElementById('downloadLink');
-    link.href=URL.createObjectURL(blob);
-    link.style.display='block';
-}
-</script>
+        // رسم الترافيرس تلقائي
+        function drawTraverse(){
+            if(traverseLine) map.removeLayer(traverseLine);
+            if(markers.length<2){
+                alert("يجب إدخال نقطتين على الأقل");
+                return;
+            }
+            traverseLine = L.polyline(markers, {color:'red'}).addTo(map);
+        }
+
+        // رسم شكل 2D (مثلاً ملعب)
+        function draw2DShape(){
+            if(shapeLayer) map.removeLayer(shapeLayer);
+            // مثال: ملعب مستطيل
+            var shape = [
+                [30.0444, 31.2357],
+                [30.0444, 31.2367],
+                [30.0454, 31.2367],
+                [30.0454, 31.2357]
+            ];
+            shapeLayer = L.polygon(shape, {color:'green', fillOpacity:0.5}).addTo(map).bindPopup("ملعب 2D");
+            map.fitBounds(shapeLayer.getBounds());
+        }
+    </script>
 </body>
 </html>

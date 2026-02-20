@@ -13,8 +13,8 @@
 body { margin:0; font-family:Arial; background:#111; color:#fff;}
 header{padding:15px; text-align:center; background:#222;}
 #controls{padding:10px; background:#222; display:flex; flex-wrap:wrap; justify-content:center; gap:5px;}
-input, button{padding:6px; border-radius:4px; border:none;}
-input{width:120px;}
+input, button, select{padding:6px; border-radius:4px; border:none;}
+input, select{width:140px;}
 button{background:#0a84ff; color:#fff; cursor:pointer;}
 button:hover{background:#0066cc;}
 #map{height:60vh; width:100%;}
@@ -32,7 +32,15 @@ th{background:#333;} td{background:#222;}
 <input type="text" id="lng" placeholder="خط الطول">
 <input type="number" id="depth" placeholder="عمق الحفر (م)" value="0.5" step="0.1">
 <input type="number" id="fillHeight" placeholder="ارتفاع الردم (م)" value="0.3" step="0.1">
+<select id="areaType">
+<option value="none">اختر نوع المنطقة</option>
+<option value="field">ملعب</option>
+<option value="building">مبنى</option>
+<option value="pool">مسبح</option>
+<option value="garden">حديقة</option>
+</select>
 <button onclick="addMarker()">أضف نقطة</button>
+<button onclick="deleteLastMarker()">حذف آخر نقطة</button>
 <button onclick="drawTraverse()">رسم الترافيرس</button>
 <button onclick="drawPolygon()">رسم المنطقة</button>
 <button onclick="calculateVolume()">احسب الحفر/الردم + شبكة</button>
@@ -48,16 +56,29 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
     attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-var markers=[], traverseLine=null, polygonLayer=null, gridLayer=null;
+var markers=[], markerLayers=[], traverseLine=null, polygonLayer=null, gridLayer=null;
 
 // إضافة نقطة
 function addMarker(){
     var lat=parseFloat(document.getElementById('lat').value);
     var lng=parseFloat(document.getElementById('lng').value);
     if(isNaN(lat)||isNaN(lng)){ alert("ادخلي إحداثيات صحيحة"); return; }
-    L.marker([lat,lng]).addTo(map).bindPopup("نقطة جديدة").openPopup();
+    var m = L.marker([lat,lng]).addTo(map).bindPopup("نقطة جديدة").openPopup();
     markers.push([lat,lng]);
+    markerLayers.push(m);
     map.setView([lat,lng],16);
+    updateTable();
+}
+
+// حذف آخر نقطة
+function deleteLastMarker(){
+    if(markers.length===0){ alert("لا يوجد نقاط لحذفها"); return; }
+    var lastMarker = markerLayers.pop();
+    map.removeLayer(lastMarker);
+    markers.pop();
+    if(traverseLine) { map.removeLayer(traverseLine); traverseLine=null; }
+    if(polygonLayer) { map.removeLayer(polygonLayer); polygonLayer=null; }
+    if(gridLayer) { map.removeLayer(gridLayer); gridLayer=null; }
     updateTable();
 }
 
@@ -67,9 +88,7 @@ function drawTraverse(){
     if(traverseLine) map.removeLayer(traverseLine);
     traverseLine=L.polyline(markers,{color:'red'}).addTo(map);
     let total=0;
-    for(let i=0;i<markers.length-1;i++){
-        total+=map.distance(markers[i],markers[i+1]);
-    }
+    for(let i=0;i<markers.length-1;i++){ total+=map.distance(markers[i],markers[i+1]); }
     alert("طول الترافيرس: "+total.toFixed(2)+" متر");
 }
 
@@ -81,25 +100,26 @@ function drawPolygon(){
     map.fitBounds(polygonLayer.getBounds());
 }
 
-// حساب الحفر/الردم + إنشاء الشبكة
+// حساب الحفر/الردم + إنشاء الشبكة + رسم شكل افتراضي
 function calculateVolume(){
     if(!polygonLayer){ alert("ارسم المنطقة أولا"); return; }
+
     var depth=parseFloat(document.getElementById('depth').value);
     var fillHeight=parseFloat(document.getElementById('fillHeight').value);
-
+    var type=document.getElementById('areaType').value;
     var bounds=polygonLayer.getBounds();
-    var gridStepLat=(bounds.getNorth()-bounds.getSouth())/5; // تقسيم المنطقة 5x5
-    var gridStepLng=(bounds.getEast()-bounds.getWest())/5;
+    var gridStepLat=(bounds.getNorth()-bounds.getSouth())/10;
+    var gridStepLng=(bounds.getEast()-bounds.getWest())/10;
 
     if(gridLayer) map.removeLayer(gridLayer);
     gridLayer=L.layerGroup();
 
     let tableHTML=`<table>
-    <tr><th>خلية</th><th>إحداثيات مركز الخلية</th><th>مساحة م²</th><th>حجم الحفر م³</th><th>حجم الردم م³</th></tr>`;
+    <tr><th>خلية</th><th>إحداثيات مركز الخلية</th><th>نوع</th><th>مساحة م²</th><th>حفر م³</th><th>ردم م³</th></tr>`;
 
     let cellCount=0;
-    for(let i=0;i<5;i++){
-        for(let j=0;j<5;j++){
+    for(let i=0;i<10;i++){
+        for(let j=0;j<10;j++){
             let sw=[bounds.getSouth()+i*gridStepLat, bounds.getWest()+j*gridStepLng];
             let ne=[bounds.getSouth()+(i+1)*gridStepLat, bounds.getWest()+(j+1)*gridStepLng];
             let cellPoly=turf.polygon([[
@@ -112,29 +132,29 @@ function calculateVolume(){
             let area=turf.area(cellPoly);
             let volumeExcavation=area*depth;
             let volumeFill=area*fillHeight;
-
-            // مركز الخلية
             let centerLat=(sw[0]+ne[0])/2;
             let centerLng=(sw[1]+ne[1])/2;
+
             // رسم الخلية
             let cellLayer=L.polygon([
                 [sw[0],sw[1]],
                 [sw[0],ne[1]],
                 [ne[0],ne[1]],
                 [ne[0],sw[1]]
-            ],{color:'#00ffff', fillOpacity:0.1}).addTo(gridLayer);
+            ],{color:'#00ffff', fillOpacity:0.05}).addTo(gridLayer);
             gridLayer.addTo(map);
 
             cellCount++;
             tableHTML+=`<tr><td>${cellCount}</td><td>${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}</td>
-            <td>${area.toFixed(2)}</td><td>${volumeExcavation.toFixed(2)}</td><td>${volumeFill.toFixed(2)}</td></tr>`;
+            <td>${type}</td><td>${area.toFixed(2)}</td><td>${volumeExcavation.toFixed(2)}</td><td>${volumeFill.toFixed(2)}</td></tr>`;
         }
     }
     tableHTML+=`</table>`;
     document.getElementById('table-container').innerHTML=tableHTML;
 
-    // رسم الشكل التقريبي بعد التنفيذ
-    polygonLayer.setStyle({color:'lime', fillOpacity:0.2});
+    // رسم الشكل الافتراضي حسب النوع
+    polygonLayer.setStyle({color:(type==='field')?'yellow':(type==='building')?'orange':(type==='pool')?'blue':(type==='garden')?'green':'lime',
+                            fillOpacity:0.2});
     map.fitBounds(polygonLayer.getBounds());
 }
 

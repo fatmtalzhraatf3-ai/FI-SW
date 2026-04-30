@@ -3,169 +3,133 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>مشروع مساحي متقدم</title>
-
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<title>نظام مراقبة توليد الطاقة</title>
 
 <style>
-body { margin:0; font-family:Arial; background:#111; color:#fff;}
-header{padding:15px; text-align:center; background:#222;}
-#controls{padding:10px; background:#222; display:flex; flex-wrap:wrap; justify-content:center; gap:5px;}
-input, button, select{padding:6px; border-radius:4px; border:none;}
-input, select{width:140px;}
-button{background:#0a84ff; color:#fff; cursor:pointer;}
-button:hover{background:#0066cc;}
-#map{height:60vh; width:100%;}
-table{margin:10px auto; border-collapse:collapse; width:95%; color:#fff;}
-th,td{border:1px solid #555; padding:5px; text-align:center;}
-th{background:#333;} td{background:#222;}
+body {
+    font-family: Arial, sans-serif;
+    direction: rtl;
+    margin: 0;
+    background: #f5f5f5;
+}
+
+/* الهيدر */
+.header {
+    background: #2c3e50;
+    color: white;
+    padding: 15px;
+    text-align: center;
+}
+
+/* الحاوية */
+.container {
+    padding: 20px;
+}
+
+/* الأزرار */
+button {
+    padding: 10px 15px;
+    margin: 5px;
+    border: none;
+    background: #3498db;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+button:hover {
+    background: #1f6fa5;
+}
+
+/* الأقسام */
+.section {
+    margin-top: 20px;
+}
+
+/* الكروت */
+.cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.card {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    flex: 1;
+    min-width: 200px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* الخريطة */
+.map {
+    width: 100%;
+    height: 400px;
+    background: url('https://upload.wikimedia.org/wikipedia/commons/6/6f/Map_placeholder.png');
+    background-size: cover;
+    border-radius: 10px;
+}
 </style>
 </head>
+
 <body>
 
-<header><h1>مشروع مساحي متقدم</h1></header>
-
-<div id="controls">
-<input type="text" id="lat" placeholder="خط العرض">
-<input type="text" id="lng" placeholder="خط الطول">
-<input type="number" id="depth" placeholder="عمق الحفر (م)" value="0.5" step="0.1">
-<input type="number" id="fillHeight" placeholder="ارتفاع الردم (م)" value="0.3" step="0.1">
-<select id="areaType">
-<option value="none">اختر نوع المنطقة</option>
-<option value="field">ملعب</option>
-<option value="building">مبنى</option>
-<option value="pool">مسبح</option>
-<option value="garden">حديقة</option>
-</select>
-<button onclick="addMarker()">أضف نقطة</button>
-<button onclick="deleteLastMarker()">حذف آخر نقطة</button>
-<button onclick="drawTraverse()">رسم الترافيرس</button>
-<button onclick="drawPolygon()">رسم المنطقة</button>
-<button onclick="calculateVolume()">احسب الحفر/الردم + شبكة</button>
+<!-- الهيدر -->
+<div class="header">
+    <h2>جامعة قنا - كلية الآداب</h2>
+    <p>نظام مراقبة توليد الطاقة من أرضية الملعب</p>
 </div>
 
-<div id="map"></div>
-<div id="table-container"></div>
+<div class="container">
+
+    <!-- أزرار التنقل -->
+    <div>
+        <button onclick="showSection('map')">الخريطة</button>
+        <button onclick="showSection('analysis')">التحليل</button>
+        <button onclick="showSection('stats')">الإحصائيات</button>
+    </div>
+
+    <!-- الخريطة -->
+    <div id="map" class="section">
+        <h3>🗺️ خريطة توزيع الطاقة</h3>
+        <div class="map"></div>
+    </div>
+
+    <!-- التحليل -->
+    <div id="analysis" class="section" style="display:none;">
+        <h3>📊 تحليل الطاقة</h3>
+        <div class="cards">
+            <div class="card">إجمالي الطاقة<br><b>34.75 kWh</b></div>
+            <div class="card">عدد الخطوات<br><b>118,650</b></div>
+            <div class="card">متوسط الطاقة<br><b>0.293 Wh</b></div>
+        </div>
+    </div>
+
+    <!-- الإحصائيات -->
+    <div id="stats" class="section" style="display:none;">
+        <h3>📈 أعلى المناطق إنتاجًا</h3>
+        <div class="cards">
+            <div class="card">المنطقة الوسطى<br><b>8.6 kWh</b></div>
+            <div class="card">الشمال<br><b>7.3 kWh</b></div>
+            <div class="card">الجنوب<br><b>6.1 kWh</b></div>
+        </div>
+    </div>
+
+</div>
 
 <script>
-// إعداد الخريطة
-var map = L.map('map').setView([30.0444,31.2357],15);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'&copy; OpenStreetMap contributors'
-}).addTo(map);
-
-var markers=[], markerLayers=[], traverseLine=null, polygonLayer=null, gridLayer=null;
-
-// إضافة نقطة
-function addMarker(){
-    var lat=parseFloat(document.getElementById('lat').value);
-    var lng=parseFloat(document.getElementById('lng').value);
-    if(isNaN(lat)||isNaN(lng)){ alert("ادخلي إحداثيات صحيحة"); return; }
-    var m = L.marker([lat,lng]).addTo(map).bindPopup("نقطة جديدة").openPopup();
-    markers.push([lat,lng]);
-    markerLayers.push(m);
-    map.setView([lat,lng],16);
-    updateTable();
-}
-
-// حذف آخر نقطة
-function deleteLastMarker(){
-    if(markers.length===0){ alert("لا يوجد نقاط لحذفها"); return; }
-    var lastMarker = markerLayers.pop();
-    map.removeLayer(lastMarker);
-    markers.pop();
-    if(traverseLine) { map.removeLayer(traverseLine); traverseLine=null; }
-    if(polygonLayer) { map.removeLayer(polygonLayer); polygonLayer=null; }
-    if(gridLayer) { map.removeLayer(gridLayer); gridLayer=null; }
-    updateTable();
-}
-
-// رسم الترافيرس
-function drawTraverse(){
-    if(markers.length<2){ alert("يجب إدخال نقطتين على الأقل"); return; }
-    if(traverseLine) map.removeLayer(traverseLine);
-    traverseLine=L.polyline(markers,{color:'red'}).addTo(map);
-    let total=0;
-    for(let i=0;i<markers.length-1;i++){ total+=map.distance(markers[i],markers[i+1]); }
-    alert("طول الترافيرس: "+total.toFixed(2)+" متر");
-}
-
-// رسم Polygon (المنطقة)
-function drawPolygon(){
-    if(markers.length<3){ alert("أدخل ثلاث نقاط على الأقل"); return; }
-    if(polygonLayer) map.removeLayer(polygonLayer);
-    polygonLayer=L.polygon(markers,{color:'green', fillOpacity:0.4}).addTo(map).bindPopup("المنطقة");
-    map.fitBounds(polygonLayer.getBounds());
-}
-
-// حساب الحفر/الردم + إنشاء الشبكة + رسم شكل افتراضي
-function calculateVolume(){
-    if(!polygonLayer){ alert("ارسم المنطقة أولا"); return; }
-
-    var depth=parseFloat(document.getElementById('depth').value);
-    var fillHeight=parseFloat(document.getElementById('fillHeight').value);
-    var type=document.getElementById('areaType').value;
-    var bounds=polygonLayer.getBounds();
-    var gridStepLat=(bounds.getNorth()-bounds.getSouth())/10;
-    var gridStepLng=(bounds.getEast()-bounds.getWest())/10;
-
-    if(gridLayer) map.removeLayer(gridLayer);
-    gridLayer=L.layerGroup();
-
-    let tableHTML=`<table>
-    <tr><th>خلية</th><th>إحداثيات مركز الخلية</th><th>نوع</th><th>مساحة م²</th><th>حفر م³</th><th>ردم م³</th></tr>`;
-
-    let cellCount=0;
-    for(let i=0;i<10;i++){
-        for(let j=0;j<10;j++){
-            let sw=[bounds.getSouth()+i*gridStepLat, bounds.getWest()+j*gridStepLng];
-            let ne=[bounds.getSouth()+(i+1)*gridStepLat, bounds.getWest()+(j+1)*gridStepLng];
-            let cellPoly=turf.polygon([[
-                [sw[1],sw[0]],
-                [ne[1],sw[0]],
-                [ne[1],ne[0]],
-                [sw[1],ne[0]],
-                [sw[1],sw[0]]
-            ]]);
-            let area=turf.area(cellPoly);
-            let volumeExcavation=area*depth;
-            let volumeFill=area*fillHeight;
-            let centerLat=(sw[0]+ne[0])/2;
-            let centerLng=(sw[1]+ne[1])/2;
-
-            // رسم الخلية
-            let cellLayer=L.polygon([
-                [sw[0],sw[1]],
-                [sw[0],ne[1]],
-                [ne[0],ne[1]],
-                [ne[0],sw[1]]
-            ],{color:'#00ffff', fillOpacity:0.05}).addTo(gridLayer);
-            gridLayer.addTo(map);
-
-            cellCount++;
-            tableHTML+=`<tr><td>${cellCount}</td><td>${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}</td>
-            <td>${type}</td><td>${area.toFixed(2)}</td><td>${volumeExcavation.toFixed(2)}</td><td>${volumeFill.toFixed(2)}</td></tr>`;
-        }
+// تبديل الأقسام
+function showSection(id) {
+    let sections = document.getElementsByClassName('section');
+    
+    for (let i = 0; i < sections.length; i++) {
+        sections[i].style.display = 'none';
     }
-    tableHTML+=`</table>`;
-    document.getElementById('table-container').innerHTML=tableHTML;
 
-    // رسم الشكل الافتراضي حسب النوع
-    polygonLayer.setStyle({color:(type==='field')?'yellow':(type==='building')?'orange':(type==='pool')?'blue':(type==='garden')?'green':'lime',
-                            fillOpacity:0.2});
-    map.fitBounds(polygonLayer.getBounds());
-}
-
-// تحديث جدول النقاط
-function updateTable(){
-    var tableHTML=`<table><tr><th>نقطة</th><th>خط العرض</th><th>خط الطول</th></tr>`;
-    markers.forEach((p,i)=>{
-        tableHTML+=`<tr><td>${i+1}</td><td>${p[0]}</td><td>${p[1]}</td></tr>`;
-    });
-    tableHTML+=`</table>`;
-    document.getElementById('table-container').innerHTML=tableHTML;
+    document.getElementById(id).style.display = 'block';
 }
 </script>
 
